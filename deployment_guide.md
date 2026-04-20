@@ -1,49 +1,51 @@
 # Curalink — Production Deployment Guide
 
-This guide provides step-by-step instructions for deploying Curalink as a dual-stack architecture (Vercel for the React frontend, Render for the Express Node server). Follow these exactly to ensure your RAG pipelines, Google OAuth, and Database connections survive the cloud transition.
+Deploying a full-stack application (frontend + backend) involves a "chicken-and-egg" problem: the backend needs the frontend URL (for CORS), and the frontend needs the backend URL (to make API calls). 
+
+To solve this smoothly without errors, we will deploy in the exact order outlined below.
 
 ---
 
-## Stage 1: Google Cloud Console (OAuth Prep)
+## 🟢 STAGE 1: Deploy Frontend to Vercel (Placeholder Backend)
 
-Currently, your Google OAuth is configured to redirect to `http://localhost:5000/api/auth/google/callback`. Since your backend will be living on a live URL (Render), Google will immediately block authentication requests unless you authorize the new live domains.
+We need the official Vercel URL first. We will deploy the frontend right now using a temporary placeholder for the backend to get it online.
 
-1. Navigate to the [Google Cloud Console](https://console.cloud.google.com/) and specifically your Curalink project APIs.
-2. Go to **APIs & Services > Credentials**.
-3. Select your Curalink OAuth 2.0 Web Client.
-4. Under **Authorized Javascript Origins**, safely add your pending `https://curalink.vercel.app` frontend domain (or wait to add this until after Vercel gives you your exact live URL).
-5. Under **Authorized redirect URIs**, add the Render backend URI you are about to create. (e.g. `https://curalink-backend.onrender.com/api/auth/google/callback`).
-
-> **Note:** We will return to this step once Render and Vercel assign you your official random `https://` handles, but keep this tab open!
+1. Create an account / Log into [Vercel.com](https://vercel.com).
+2. Click **Add New > Project** and select your Curalink GitHub repository.
+3. In the configuration screen, set:
+   - **Framework Preset:** Vite
+   - **Root Directory:** `curalink-frontend`
+   - **Build Command:** `npm run build`
+   - **Output Directory:** `dist`
+4. Expand **Environment Variables** and add:
+   - **Name:** `VITE_API_URL`
+   - **Value:** `https://placeholder-url.com/api` *(We will fix this later!)*
+5. Click **Deploy**.
+6. **Result:** Once finished, Vercel gives you your permanent domain (e.g., `https://curalink-app.vercel.app`).
+   **👉 COPY THIS VERCEL URL. You need it for the next steps!**
 
 ---
 
-## Stage 2: Deploying the Backend (Render)
+## 🟢 STAGE 2: Deploy Backend to Render
 
-Render is the optimal choice for your backend due to its native handling of long-running operations (like LLM inferencing constraints) and free-tier Express integrations.
+Now that you have your permanent frontend URL, we can safely deploy the backend because we know exactly what domain to allow in CORS.
 
-### Steps to Deploy
-
-1. Ensure your entire Curalink application is safely pushed to a GitHub repository.
-2. Log into [Render.com](https://render.com/).
-3. Click **New +** and select **Web Service**.
-4. Connect the GitHub repository containing `curalink-backend`.
-5. Render Configuration Setup:
-   - **Root Directory:** `curalink-backend`
-   - **Environment:** `Node`
+1. Create an account / Log into [Render.com](https://render.com).
+2. Click **New +** and select **Web Service**.
+3. Connect your Curalink GitHub repository.
+4. Render Configuration Setup:
+   - **Root Directory:** `curalink-backend` 
+   - **Environment:** Node
    - **Build Command:** `npm install`
    - **Start Command:** `node server.js`
+5. Expand **Environment Variables** and add all of the required keys below. 
 
-### Environment Variables (Render)
-
-Before hitting deploy, scroll down to the **Environment Variables** section and meticulously insert the following keys.
-
-*Pay attention to the specific FRONTEND_URL.*
+> **Important:** For `FRONTEND_URL`, paste the EXACT link you copied from Vercel in Step 1 (without a trailing slash `/`).
 
 ```env
 NODE_ENV=production
 PORT=5000
-FRONTEND_URL=https://[YOUR-VERCEL-PROJECT].vercel.app
+FRONTEND_URL=https://your-actual-vercel-url.vercel.app
 
 # MongoDB
 MONGODB_URI=mongodb+srv://curalink_user:<YOUR_PASSWORD>@cluster0.as4spf7.mongodb.net/curalink
@@ -55,65 +57,43 @@ JWT_EXPIRES_IN=7d
 # Google OAuth Credentials
 GOOGLE_CLIENT_ID=<YOUR_GOOGLE_CLIENT_ID>
 GOOGLE_CLIENT_SECRET=<YOUR_GOOGLE_CLIENT_SECRET>
-GOOGLE_CALLBACK_URL=https://your-app-name.onrender.com/api/auth/google/callback
+GOOGLE_CALLBACK_URL=https://your-pending-render-url.onrender.com/api/auth/google/callback
 
 # Groq Intelligence API
 GROQ_API_KEY=<YOUR_GROQ_API_KEY>
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
-6. Click **Deploy Web Service**. Wait for the logs to declare: `🚀 Server running on port 5000` & `✅ MongoDB connected`.
-7. Once deployed, Render will grant you an official URL (e.g., `https://curalink-api-xyz.onrender.com`). **Copy this URL.** You need it for Vercel.
+6. Click **Deploy Web Service** and wait for it to assign you a Live URL (it will look like `https://curalink-api-xyz.onrender.com`).
+   **👉 COPY THIS RENDER URL. You need it for the next steps!**
 
 ---
 
-## Stage 3: Deploying the Frontend (Vercel)
+## 🟢 STAGE 3: Seal the Connections
 
-Vercel will impeccably serve your Vite + React single-page frontend.
+Now we just go back and plug the final variables into the missing locations so the loop connects.
 
-### Steps to Deploy
+### Step 3A: Update Vercel's Placeholder
+1. Go back to your project dashboard on Vercel.
+2. Navigate to **Settings > Environment Variables**.
+3. Edit the `VITE_API_URL` you made earlier.
+4. Replace the placeholder value with your official Render URL. (e.g. `https://curalink-api-xyz.onrender.com/api`).
+5. **CRITICAL:** Re-deploy the frontend! Go to Deployments -> click the three dots on your latest deployment -> click **Redeploy**. (React environments require a fresh build to consume new links).
 
-1. Log into [Vercel.com](https://vercel.com/) and securely link your GitHub account if you haven't already.
-2. Click **Add New > Project** and select your Curalink GitHub repository.
-3. In the Vercel configuration screen:
-   - **Framework Preset:** Vite
-   - **Root Directory:** Edit this and select `curalink-frontend`
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-
-### Environment Variables (Vercel)
-
-Drop down the Environment Variables interface and inject the Render URL you copied in Stage 2.
-
-```env
-VITE_API_URL=https://curalink-api-xyz.onrender.com/api
-```
-
-4. Click **Deploy**. Vercel detects the custom `vercel.json` rewrite bindings we added and processes them universally avoiding 404 router redirects automatically.
-5. Once complete, copy the final live Vercel URL (e.g., `https://curalink.vercel.app`).
+### Step 3B: Fix Render's Google Callback
+1. Go back to Render's Environment Variable settings for your backend.
+2. Edit `GOOGLE_CALLBACK_URL` and replace `your-pending-render-url.onrender.com` with the actual URL Render just generated for you.
 
 ---
 
-## Stage 4: Locking the Infrastructure Loop
+## 🟢 STAGE 4: Finalize Google Cloud Platform (GCP)
 
-Now that both domains officially exist in reality, we must cleanly bind their security policies together over CORS and OAuth.
+Google requires explicitly white-listing these newly generated domains before it allows users to log in with their Google accounts.
 
-1. **Fix Render CORS Constraints:**
-   Go back into your Render dashboard for the API -> `Environment`. Update the `FRONTEND_URL` variable to exactly match the live Vercel URL you just received. (No trailing slashes).
-2. **Fix Google OAuth Returns:**
-   Go back into the Google Cloud Console (Stage 1). Make sure the `Authorized Javascript Origins` has your exact `https://curalink.vercel.app` domain. Ensure the `Authorized redirect URIs` points to your exact `https://curalink-api-xyz.onrender.com/api/auth/google/callback` layout.
+1. Navigate to the [Google Cloud Console](https://console.cloud.google.com/) > **APIs & Services > Credentials**.
+2. Edit your Curalink OAuth 2.0 Web Client.
+3. Under **Authorized Javascript Origins**, add your official **Vercel URL** (e.g., `https://curalink-app.vercel.app`).
+4. Under **Authorized redirect URIs**, add your official **Render Callback URL** (e.g., `https://curalink-api-xyz.onrender.com/api/auth/google/callback`).
+5. Save the configuration.
 
-*(Ensure to update the Render `GOOGLE_CALLBACK_URL` server variable to this live callback endpoint if it currently just has placeholder text!)*
-
----
-
-## Stage 5: Final Production Verification
-
-Proceed strictly to your newly provisioned Vercel frontend domain in an incognito window.
-Perform the standard operation loop to guarantee database read/writes and serverless memory are operational.
-
-- [ ] Create an account using email/password manually.
-- [ ] Log out, and then securely test the Google OAuth sign-in flow.
-- [ ] Connect into a workspace session.
-- [ ] Upload a random clinical PDF file, confirming the memory-to-cloud PDF parser correctly extracts and summarizes it safely without disk-access crashes.
-- [ ] Formulate a standard clinical reasoning request checking that Groq API connections successfully answer using external literature.
+Your app is now securely bridged and fully functional!
