@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd curalink-frontend && npm install && npm run build",
+  "buildCommand": "npm --prefix curalink-frontend install && npm --prefix curalink-frontend run build",
   "outputDirectory": "curalink-frontend/dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
