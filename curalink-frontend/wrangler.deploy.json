@@ -5,6 +5,5 @@
   "main": "dist/server/index.js",
   "assets": {
     "directory": "dist/client"
-  },
-  "no_bundle": true
+  }
 }
