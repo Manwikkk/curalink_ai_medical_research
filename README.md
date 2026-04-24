@@ -1,28 +1,28 @@
 <div align="center">
 
-<!-- Animated gradient header -->
-<img src="https://readme-typing-svg.demolab.com?font=Sora&weight=700&size=42&duration=3500&pause=800&color=5EEAD4&center=true&vCenter=true&multiline=false&repeat=true&width=500&height=60&lines=Curalink" alt="Curalink" />
+<!-- Custom animated header with gradient text + heartbeat trace -->
+<img src=".github/assets/header.svg" alt="Curalink — AI Medical Research Assistant" width="100%" />
 
 <br/>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://readme-typing-svg.demolab.com?font=Inter&weight=400&size=16&duration=4000&pause=1200&color=94A3B8&center=true&vCenter=true&multiline=true&repeat=true&width=600&height=50&lines=AI-Powered+Medical+Research+Assistant;Retrieve+%E2%80%A2+Rank+%E2%80%A2+Synthesize+%E2%80%A2+Cite">
-  <img src="https://readme-typing-svg.demolab.com?font=Inter&weight=400&size=16&duration=4000&pause=1200&color=64748B&center=true&vCenter=true&multiline=true&repeat=true&width=600&height=50&lines=AI-Powered+Medical+Research+Assistant;Retrieve+%E2%80%A2+Rank+%E2%80%A2+Synthesize+%E2%80%A2+Cite" alt="Tagline" />
-</picture>
+![React](https://img.shields.io/badge/React_19-20232A?style=flat-square&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-20232A?style=flat-square&logo=typescript&logoColor=3178C6)
+![TailwindCSS](https://img.shields.io/badge/Tailwind_4-20232A?style=flat-square&logo=tailwindcss&logoColor=06B6D4)
+![Node.js](https://img.shields.io/badge/Node.js-20232A?style=flat-square&logo=node.js&logoColor=339933)
+![Express](https://img.shields.io/badge/Express-20232A?style=flat-square&logo=express&logoColor=ffffff)
+![MongoDB](https://img.shields.io/badge/MongoDB-20232A?style=flat-square&logo=mongodb&logoColor=47A248)
+![Groq](https://img.shields.io/badge/LLaMA_3.3_70B-20232A?style=flat-square&logo=meta&logoColor=0668E1)
+![Cloudflare](https://img.shields.io/badge/Workers-20232A?style=flat-square&logo=cloudflare&logoColor=F38020)
+![Render](https://img.shields.io/badge/Render-20232A?style=flat-square&logo=render&logoColor=46E3B7)
 
-<br/><br/>
+<br/>
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-curalink.workers.dev-5eead4?style=flat-square&labelColor=0f172a)](https://curalink-ai-medical-research.manvikms318.workers.dev)
 &nbsp;
 [![Source Code](https://img.shields.io/badge/Source-GitHub-f8fafc?style=flat-square&logo=github&labelColor=0f172a)](https://github.com/Manwikkk/curalink_ai_medical_research)
 
-<br/>
-
-<img src="https://github-readme-stats.vercel.app/api/pin/?username=Manwikkk&repo=curalink_ai_medical_research&theme=react&hide_border=true&bg_color=0f172a&title_color=5eead4&icon_color=818cf8&text_color=94a3b8" />
-
 </div>
 
-<br/>
 
 ---
 
@@ -117,25 +117,8 @@ Scores publications on **4 weighted signals**: keyword relevance (55%), recency 
 | LLM | LLaMA 3.3 70B Versatile | Groq Cloud |
 | Auth | Google OAuth 2.0, JWT, bcrypt | Passport.js |
 
----
 
-## Tech Stack
 
-<div align="center">
-
-![React](https://img.shields.io/badge/React_19-20232A?style=flat-square&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-20232A?style=flat-square&logo=typescript&logoColor=3178C6)
-![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS_4-20232A?style=flat-square&logo=tailwindcss&logoColor=06B6D4)
-![Vite](https://img.shields.io/badge/Vite_7-20232A?style=flat-square&logo=vite&logoColor=646CFF)
-![Node.js](https://img.shields.io/badge/Node.js-20232A?style=flat-square&logo=node.js&logoColor=339933)
-![Express](https://img.shields.io/badge/Express-20232A?style=flat-square&logo=express&logoColor=ffffff)
-![MongoDB](https://img.shields.io/badge/MongoDB-20232A?style=flat-square&logo=mongodb&logoColor=47A248)
-![Cloudflare](https://img.shields.io/badge/Workers-20232A?style=flat-square&logo=cloudflare&logoColor=F38020)
-![Render](https://img.shields.io/badge/Render-20232A?style=flat-square&logo=render&logoColor=46E3B7)
-
-</div>
-
----
 
 ## Project Structure
 
