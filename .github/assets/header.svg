@@ -1,40 +1,41 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
   <defs>
-    <!-- Gradient for the main text -->
-    <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#818cf8">
-        <animate attributeName="stop-color" values="#818cf8;#5eead4;#818cf8" dur="4s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="50%" stop-color="#5eead4">
-        <animate attributeName="stop-color" values="#5eead4;#a78bfa;#5eead4" dur="4s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="100%" stop-color="#06b6d4">
-        <animate attributeName="stop-color" values="#06b6d4;#818cf8;#06b6d4" dur="4s" repeatCount="indefinite"/>
-      </stop>
-    </linearGradient>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600&amp;display=swap');
+    </style>
 
     <!-- Glow filter -->
     <filter id="glow">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
       <feComposite in="SourceGraphic" in2="blur" operator="over"/>
     </filter>
 
     <!-- Heartbeat line gradient -->
     <linearGradient id="lineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#5eead4" stop-opacity="0"/>
-      <stop offset="30%" stop-color="#5eead4" stop-opacity="0.6"/>
-      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.8"/>
-      <stop offset="70%" stop-color="#5eead4" stop-opacity="0.6"/>
+      <stop offset="20%" stop-color="#5eead4" stop-opacity="0.3"/>
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.5"/>
+      <stop offset="80%" stop-color="#5eead4" stop-opacity="0.3"/>
       <stop offset="100%" stop-color="#5eead4" stop-opacity="0"/>
     </linearGradient>
 
-    <!-- Animated dash for heartbeat trace -->
+    <!-- Animated trace pulse gradient -->
     <linearGradient id="traceGrad" x1="0%" y1="0%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#5eead4" stop-opacity="0">
-        <animate attributeName="stop-opacity" values="0;0.8;0" dur="3s" repeatCount="indefinite"/>
+        <animate attributeName="stop-opacity" values="0;0.9;0" dur="3s" repeatCount="indefinite"/>
       </stop>
-      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.8">
-        <animate attributeName="stop-opacity" values="0.8;0;0.8" dur="3s" repeatCount="indefinite"/>
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.9">
+        <animate attributeName="stop-opacity" values="0.9;0;0.9" dur="3s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+
+    <!-- Icon gradient -->
+    <linearGradient id="iconGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#5eead4">
+        <animate attributeName="stop-color" values="#5eead4;#818cf8;#5eead4" dur="4s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#818cf8">
+        <animate attributeName="stop-color" values="#818cf8;#5eead4;#818cf8" dur="4s" repeatCount="indefinite"/>
       </stop>
     </linearGradient>
   </defs>
@@ -42,8 +43,8 @@
   <!-- Background -->
   <rect width="800" height="200" fill="#0f172a" rx="12"/>
 
-  <!-- Subtle grid pattern -->
-  <g opacity="0.04" stroke="#5eead4" stroke-width="0.5">
+  <!-- Subtle grid -->
+  <g opacity="0.035" stroke="#5eead4" stroke-width="0.5">
     <line x1="0" y1="40" x2="800" y2="40"/>
     <line x1="0" y1="80" x2="800" y2="80"/>
     <line x1="0" y1="120" x2="800" y2="120"/>
@@ -57,64 +58,64 @@
     <line x1="700" y1="0" x2="700" y2="200"/>
   </g>
 
-  <!-- Heartbeat line (behind text) -->
+  <!-- Heartbeat line (background decoration) -->
   <polyline
-    points="0,130 80,130 130,130 160,80 190,170 220,60 250,150 280,100 310,130 400,130 800,130"
+    points="0,140 100,140 150,140 180,95 210,175 240,65 270,160 300,110 330,140 450,140 800,140"
     fill="none"
     stroke="url(#lineGrad)"
     stroke-width="1.5"
     stroke-linecap="round"
     stroke-linejoin="round"
-    opacity="0.4"
+    opacity="0.35"
   />
 
   <!-- Animated trace pulse -->
   <polyline
-    points="0,130 80,130 130,130 160,80 190,170 220,60 250,150 280,100 310,130 400,130 800,130"
+    points="0,140 100,140 150,140 180,95 210,175 240,65 270,160 300,110 330,140 450,140 800,140"
     fill="none"
     stroke="url(#traceGrad)"
     stroke-width="2"
     stroke-linecap="round"
     stroke-linejoin="round"
     stroke-dasharray="120 680"
-    opacity="0.7"
+    opacity="0.6"
   >
     <animate attributeName="stroke-dashoffset" values="800;-800" dur="4s" repeatCount="indefinite"/>
   </polyline>
 
-  <!-- Activity icon (left of text) -->
-  <g transform="translate(270, 52) scale(2.2)" filter="url(#glow)">
+  <!-- Activity icon — positioned left of text with clear spacing -->
+  <g transform="translate(295, 58)" filter="url(#glow)">
     <polyline
-      points="22 12 18 12 15 21 9 3 6 12 2 12"
+      points="0 14 5 14 9 25 15 3 21 25 24 14 29 14"
       fill="none"
-      stroke="url(#textGrad)"
-      stroke-width="2"
+      stroke="url(#iconGrad)"
+      stroke-width="2.8"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
   </g>
 
-  <!-- Main title -->
-  <text x="400" y="95" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-weight="700" font-size="56" fill="url(#textGrad)" filter="url(#glow)" letter-spacing="-1">
+  <!-- "Curalink" text — white, Sora font, matching the app -->
+  <text x="435" y="88" text-anchor="middle" font-family="Sora, 'Segoe UI', system-ui, sans-serif" font-weight="600" font-size="42" fill="#f8fafc" letter-spacing="-0.5" filter="url(#glow)">
     Curalink
   </text>
 
   <!-- Subtitle -->
-  <text x="400" y="165" text-anchor="middle" font-family="'Segoe UI', system-ui, -apple-system, sans-serif" font-weight="400" font-size="15" fill="#94a3b8" letter-spacing="4">
+  <text x="400" y="168" text-anchor="middle" font-family="'Segoe UI', system-ui, sans-serif" font-weight="400" font-size="13" fill="#94a3b8" letter-spacing="5">
     AI MEDICAL RESEARCH ASSISTANT
   </text>
 
   <!-- Corner accents -->
-  <line x1="20" y1="20" x2="60" y2="20" stroke="#5eead4" stroke-width="1" opacity="0.3"/>
-  <line x1="20" y1="20" x2="20" y2="50" stroke="#5eead4" stroke-width="1" opacity="0.3"/>
-  <line x1="740" y1="180" x2="780" y2="180" stroke="#818cf8" stroke-width="1" opacity="0.3"/>
-  <line x1="780" y1="150" x2="780" y2="180" stroke="#818cf8" stroke-width="1" opacity="0.3"/>
+  <line x1="20" y1="20" x2="55" y2="20" stroke="#5eead4" stroke-width="1" opacity="0.25"/>
+  <line x1="20" y1="20" x2="20" y2="45" stroke="#5eead4" stroke-width="1" opacity="0.25"/>
+  <line x1="745" y1="180" x2="780" y2="180" stroke="#818cf8" stroke-width="1" opacity="0.25"/>
+  <line x1="780" y1="155" x2="780" y2="180" stroke="#818cf8" stroke-width="1" opacity="0.25"/>
 
   <!-- Pulsing dots -->
-  <circle cx="50" cy="130" r="2" fill="#5eead4" opacity="0.5">
-    <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"/>
+  <circle cx="55" cy="140" r="2" fill="#5eead4" opacity="0.4">
+    <animate attributeName="opacity" values="0.3;0.9;0.3" dur="2s" repeatCount="indefinite"/>
   </circle>
-  <circle cx="750" cy="130" r="2" fill="#818cf8" opacity="0.5">
-    <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" begin="1s" repeatCount="indefinite"/>
+  <circle cx="745" cy="140" r="2" fill="#818cf8" opacity="0.4">
+    <animate attributeName="opacity" values="0.3;0.9;0.3" dur="2s" begin="1s" repeatCount="indefinite"/>
   </circle>
 </svg>

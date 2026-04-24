@@ -1,25 +1,27 @@
 <div align="center">
 
-<!-- Custom animated header with gradient text + heartbeat trace -->
+<!-- Custom animated header with gradient heartbeat trace -->
 <img src=".github/assets/header.svg" alt="Curalink — AI Medical Research Assistant" width="100%" />
 
 <br/>
 
-![React](https://img.shields.io/badge/React_19-20232A?style=flat-square&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript-20232A?style=flat-square&logo=typescript&logoColor=3178C6)
-![TailwindCSS](https://img.shields.io/badge/Tailwind_4-20232A?style=flat-square&logo=tailwindcss&logoColor=06B6D4)
-![Node.js](https://img.shields.io/badge/Node.js-20232A?style=flat-square&logo=node.js&logoColor=339933)
-![Express](https://img.shields.io/badge/Express-20232A?style=flat-square&logo=express&logoColor=ffffff)
-![MongoDB](https://img.shields.io/badge/MongoDB-20232A?style=flat-square&logo=mongodb&logoColor=47A248)
-![Groq](https://img.shields.io/badge/LLaMA_3.3_70B-20232A?style=flat-square&logo=meta&logoColor=0668E1)
-![Cloudflare](https://img.shields.io/badge/Workers-20232A?style=flat-square&logo=cloudflare&logoColor=F38020)
-![Render](https://img.shields.io/badge/Render-20232A?style=flat-square&logo=render&logoColor=46E3B7)
+[![Live Demo](https://img.shields.io/badge/%E2%96%B6%20%20Live%20Demo-curalink--ai--medical--research.workers.dev-5eead4?style=for-the-badge&labelColor=0f172a)](https://curalink-ai-medical-research.manvikms318.workers.dev)
 
 <br/>
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-curalink.workers.dev-5eead4?style=flat-square&labelColor=0f172a)](https://curalink-ai-medical-research.manvikms318.workers.dev)
-&nbsp;
-[![Source Code](https://img.shields.io/badge/Source-GitHub-f8fafc?style=flat-square&logo=github&labelColor=0f172a)](https://github.com/Manwikkk/curalink_ai_medical_research)
+<table>
+<tr>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg" width="30"/><br/><sub><b>React 19</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg" width="30"/><br/><sub><b>TypeScript</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tailwindcss/tailwindcss-original.svg" width="30"/><br/><sub><b>Tailwind 4</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nodejs/nodejs-original.svg" width="30"/><br/><sub><b>Node.js</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/express/express-original.svg" width="30"/><br/><sub><b>Express</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/mongodb/mongodb-original.svg" width="30"/><br/><sub><b>MongoDB</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vitejs/vitejs-original.svg" width="30"/><br/><sub><b>Vite 7</b></sub></td>
+<td align="center"><img src="https://upload.wikimedia.org/wikipedia/commons/4/4b/Cloudflare_Logo.svg" width="30"/><br/><sub><b>Workers</b></sub></td>
+<td align="center"><img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/groq/groq-original.svg" width="30"/><br/><sub><b>LLaMA 3.3</b></sub></td>
+</tr>
+</table>
 
 </div>
 
