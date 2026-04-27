@@ -28,8 +28,13 @@ export function QueryComposer({ onSubmit, disabled = false }: QueryComposerProps
     if (disabled) return;
     if (!query.trim() && files.length === 0) return;
     onSubmit?.({ query, condition, intent, location, files });
+    // Reset everything so stale context never bleeds into the next query
     setQuery("");
     setFiles([]);
+    setCondition("");
+    setIntent("");
+    setLocation("");
+    setShowStructured(false);
   }
 
   function addFiles(list: FileList | null) {

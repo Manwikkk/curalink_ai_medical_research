@@ -128,12 +128,14 @@ export async function sendMessage(req, res) {
       }
     }
 
-    // ── 4. Query expansion ─────────────────────────────────────────────────
-    // Use metaCondition (conversation topic) for better API search queries,
-    // but NOT to constrain the LLM answer.
+    // ── 4. Query expansion ──────────────────────────────────────────────────
+    // Use ONLY currentCondition (what user sent in THIS request) for search queries.
+    // Using metaCondition here would pollute the search with previous turn's topic
+    // (e.g., a follow-up about "Paralysis attack" would incorrectly search for "Bone marrow").
+    // The LLM handles topical continuity via conversation history — not via search APIs.
     const { pubmedQuery, openAlexQuery, trialsCondition } = expandQuery(
       searchQuery,
-      metaCondition,
+      currentCondition,
       currentIntent
     );
 
@@ -152,12 +154,17 @@ export async function sendMessage(req, res) {
     const maxPubs   = req.user?.preferences?.maxPublications || 6;
     const maxTrials = req.user?.preferences?.maxTrials       || 4;
 
+    // Use currentCondition so ranking doesn't apply a stale previous-turn condition
     const topPublications = rankPublications(
       [...pubMedResults, ...openAlexResults],
-      `${searchQuery} ${metaCondition}`,
+      `${searchQuery} ${currentCondition}`.trim(),
       maxPubs
     );
-    const topTrials = rankTrials(trialsResults, `${searchQuery} ${metaCondition}`, maxTrials);
+    const topTrials = rankTrials(
+      trialsResults,
+      `${searchQuery} ${currentCondition}`.trim(),
+      maxTrials
+    );
 
     // ── 7. LLM synthesis ──────────────────────────────────────────────────
     // Pass ONLY the current request's structured context to the LLM.
