@@ -412,7 +412,10 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
           {ragUsed === true && (
             <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
               <BookOpenCheck className="h-3 w-3" />
-              Using your uploaded report
+              {msg.answer?.docType === "patient_report" && "Using patient report"}
+              {msg.answer?.docType === "research_paper" && "Using research paper"}
+              {msg.answer?.docType === "general_medical" && "Using medical document"}
+              {(!msg.answer?.docType || msg.answer?.docType === "unknown") && "Using uploaded document"}
             </span>
           )}
           {ragUsed === false && msg.answer && (

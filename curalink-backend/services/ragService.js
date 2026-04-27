@@ -1,4 +1,3 @@
-import fs from "fs";
 import pdfParse from "pdf-parse";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -6,6 +5,7 @@ const CHUNK_CHAR_SIZE = 1800;   // ~450 tokens
 const CHUNK_OVERLAP   = 400;    // ~100 token overlap
 const BM25_K1 = 1.5;           // term frequency saturation
 const BM25_B  = 0.75;          // length normalisation
+const BM25_THRESHOLD = 0.05;   // lowered from 0.1 — catches more relevant chunks
 
 // ── Text Extraction ───────────────────────────────────────────────────────────
 
@@ -31,6 +31,60 @@ export async function extractTextFromPDF(buffer) {
   }
 }
 
+// ── Document Classification ───────────────────────────────────────────────────
+
+/**
+ * Classify a document based on its text content.
+ * Returns: "patient_report" | "research_paper" | "general_medical" | "non_medical"
+ */
+export function classifyDocument(text) {
+  const sample = text.slice(0, 5000).toLowerCase();
+
+  // Non-medical check first — if no medical vocabulary at all
+  const medicalTerms = [
+    "patient", "diagnosis", "treatment", "therapy", "disease", "clinical",
+    "medical", "hospital", "doctor", "physician", "symptom", "medication",
+    "drug", "dose", "surgery", "pathology", "cancer", "infection", "health",
+    "study", "trial", "abstract", "results", "conclusion", "methods",
+    "mutation", "biomarker", "gene", "protein", "cell", "tissue",
+  ];
+  const medicalHits = medicalTerms.filter(t => sample.includes(t)).length;
+  if (medicalHits < 3) return "non_medical";
+
+  // Patient report signals
+  const patientSignals = [
+    "patient name", "date of birth", "dob", "mrn", "medical record",
+    "chief complaint", "history of present illness", "hpi",
+    "physical examination", "assessment and plan", "impression:",
+    "clinical history", "presenting complaint", "past medical history",
+    "attending physician", "discharge summary", "admission date",
+    "vital signs", "lab results", "pathology report", "radiology report",
+    "patient:", "name:", "age:", "sex:", "gender:",
+  ];
+  const patientHits = patientSignals.filter(s => sample.includes(s)).length;
+
+  // Research paper signals
+  const researchSignals = [
+    "abstract", "introduction", "methods", "methodology", "results",
+    "discussion", "conclusion", "references", "bibliography",
+    "doi:", "doi.org", "et al.", "et al,", "p-value", "p value",
+    "confidence interval", "statistical", "cohort", "randomized",
+    "randomised", "placebo", "double-blind", "meta-analysis",
+    "systematic review", "sample size", "figure 1", "table 1",
+    "keywords:", "funding:", "acknowledgements", "corresponding author",
+  ];
+  const researchHits = researchSignals.filter(s => sample.includes(s)).length;
+
+  // Decision logic
+  if (patientHits >= 3) return "patient_report";
+  if (researchHits >= 4) return "research_paper";
+  if (patientHits >= 1 && medicalHits >= 8) return "patient_report";
+  if (researchHits >= 2 && medicalHits >= 5) return "research_paper";
+  if (medicalHits >= 3) return "general_medical";
+
+  return "non_medical";
+}
+
 // ── Sentence-Aware Chunking ───────────────────────────────────────────────────
 
 /**
@@ -38,7 +92,6 @@ export async function extractTextFromPDF(buffer) {
  * Each chunk stores its text and pre-computed term frequencies for BM25.
  */
 export function chunkText(text) {
-  // Split on sentence boundaries first, then group into chunks
   const sentences = text
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
@@ -59,10 +112,9 @@ export function chunkText(text) {
           text,
           index: idx++,
           keywords: [...new Set(terms)].slice(0, 80),
-          termFreq: computeTermFreq(terms),   // stored for BM25
+          termFreq: computeTermFreq(terms),
         });
       }
-      // Overlap: carry last ~CHUNK_OVERLAP chars into next chunk
       buffer = buffer.length > CHUNK_OVERLAP ? buffer.slice(-CHUNK_OVERLAP) : "";
     }
   }
@@ -74,29 +126,25 @@ export function chunkText(text) {
 
 /**
  * Retrieve top-K most relevant chunks using Okapi BM25 scoring.
- * Returns { chunks: string[], score: number, ragUsed: boolean }
+ * Falls back to first 3 chunks if no chunk exceeds threshold (broad context).
  */
-export function retrieveRelevantChunks(chunks, query, topK = 5) {
+export function retrieveRelevantChunks(chunks, query, topK = 6) {
   if (!chunks || chunks.length === 0) return { context: "", ragUsed: false, topScore: 0 };
 
   const queryTerms = tokenise(query);
   if (queryTerms.length === 0) return { context: "", ragUsed: false, topScore: 0 };
 
-  // Compute IDF for each query term across the chunk collection
   const N = chunks.length;
   const idf = {};
   for (const term of queryTerms) {
     const df = chunks.filter((c) => {
-      // Check termFreq map first, fall back to keyword list
       return (c.termFreq && c.termFreq[term]) || (c.keywords && c.keywords.includes(term));
     }).length;
     idf[term] = Math.log((N - df + 0.5) / (df + 0.5) + 1);
   }
 
-  // Average chunk length for length-normalisation
   const avgLen = chunks.reduce((s, c) => s + c.text.length, 0) / N;
 
-  // Score each chunk
   const scored = chunks.map((chunk) => {
     const tf = chunk.termFreq || {};
     const docLen = chunk.text.length;
@@ -112,22 +160,44 @@ export function retrieveRelevantChunks(chunks, query, topK = 5) {
     return { ...chunk, _score: score };
   });
 
-  const top = scored
-    .sort((a, b) => b._score - a._score)
-    .slice(0, topK)
-    .filter((c) => c._score > 0.1); // discard zero-relevance chunks
+  const sorted = scored.sort((a, b) => b._score - a._score);
+  const top = sorted.slice(0, topK).filter((c) => c._score > BM25_THRESHOLD);
 
-  if (top.length === 0) return { context: "", ragUsed: false, topScore: 0 };
+  // ── Fallback: if BM25 finds nothing relevant, use first 3 chunks as broad context
+  if (top.length === 0) {
+    const fallback = chunks.slice(0, 3);
+    const context = fallback
+      .map((c, i) => `[Document Section ${i + 1}]\n${c.text}`)
+      .join("\n\n---\n\n");
+    return { context, ragUsed: true, topScore: 0, isFallback: true };
+  }
 
   const context = top.map((c, i) => `[Excerpt ${i + 1}]\n${c.text}`).join("\n\n---\n\n");
-  return { context, ragUsed: true, topScore: top[0]._score };
+  return { context, ragUsed: true, topScore: top[0]._score, isFallback: false };
+}
+
+// ── Extract keywords for research paper PubMed search ─────────────────────────
+
+/**
+ * Extract top N meaningful keywords from document text for related-paper search.
+ */
+export function extractDocumentKeywords(text, topN = 10) {
+  const sample = text.slice(0, 8000);
+  const terms = tokenise(sample);
+  const freq = computeTermFreq(terms);
+
+  // Sort by frequency, filter short/common terms
+  return Object.entries(freq)
+    .filter(([term]) => term.length > 4)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, topN)
+    .map(([term]) => term);
 }
 
 // ── Medical Insights ──────────────────────────────────────────────────────────
 
 export function extractMedicalInsights(text) {
   const insights = [];
-  // Mutations / biomarkers
   const mutations = text.match(
     /\b(KRAS|EGFR|ALK|ROS1|BRAF|HER2|PIK3CA|TP53|BRCA[12]?|NTRK|MET|RET)\s*(G\d+[A-Z]|exon\s*\d+|mutation|amplification|fusion|positive|negative|wild.?type)?/gi
   ) || [];
@@ -159,7 +229,7 @@ export function generateQuickSummary(text) {
   const excerpt = text.slice(0, 2500).replace(/\s+/g, " ").trim();
   const sentences = excerpt.split(/[.!?]+/).filter((s) => s.trim().length > 20);
   const medSentences = sentences.filter((s) =>
-    /\b(diagnosis|treatment|cancer|tumor|mutation|stage|therapy|pathology|biopsy|imaging|labs?|findings?|impression|conclusion|history|assessment)\b/i.test(s)
+    /\b(diagnosis|treatment|cancer|tumor|mutation|stage|therapy|pathology|biopsy|imaging|labs?|findings?|impression|conclusion|history|assessment|abstract|methods|results)\b/i.test(s)
   );
   const selected = (medSentences.length > 0 ? medSentences : sentences).slice(0, 3);
   return selected.join(". ").trim() + "." || excerpt.slice(0, 300);

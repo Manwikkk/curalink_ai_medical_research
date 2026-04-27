@@ -2,14 +2,16 @@ import { useState } from "react";
 import {
   BookOpen,
   BookOpenCheck,
+  FileText,
   FlaskConical,
   Quote,
   Search as SearchIcon,
   Sparkles,
   Stethoscope,
+  AlertTriangle,
   User,
 } from "lucide-react";
-import type { AnswerSection } from "@/lib/types";
+import type { AnswerSection, DocType } from "@/lib/types";
 import { PublicationCard } from "./PublicationCard";
 import { TrialCard } from "./TrialCard";
 import { SourceCard } from "./SourceCard";
@@ -26,13 +28,18 @@ export function AnswerView({ answer }: { answer: AnswerSection }) {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [trialStatusFilter, setTrialStatusFilter] = useState<TrialStatusFilter>("all");
 
-  // Guard: don't show personalizedInsights if it's literally the string "null" or empty
-  const personalizedInsights =
-    answer.personalizedInsights &&
-    answer.personalizedInsights !== "null" &&
-    answer.personalizedInsights.trim().length > 0
-      ? answer.personalizedInsights
+  // Unified answer — prefer new field, fallback to legacy conditionOverview
+  const primaryAnswer = answer.answer || answer.conditionOverview || "";
+
+  // documentInsights — prefer new field, fallback to legacy personalizedInsights
+  const documentInsights =
+    (answer.documentInsights ?? answer.personalizedInsights) &&
+    (answer.documentInsights ?? answer.personalizedInsights) !== "null" &&
+    String(answer.documentInsights ?? answer.personalizedInsights).trim().length > 0
+      ? String(answer.documentInsights ?? answer.personalizedInsights)
       : null;
+
+  const docType = answer.docType || null;
 
   const tabs: {
     id: Tab;
@@ -136,39 +143,81 @@ export function AnswerView({ answer }: { answer: AnswerSection }) {
       {/* ── Overview ──────────────────────────────────────────────────────── */}
       {tab === "overview" && (
         <div className="grid gap-4">
-          {/* RAG Document Context Banner */}
+          {/* RAG / Document Context Banner */}
           {answer.ragUsed === true && (
             <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/8 px-4 py-3">
               <BookOpenCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
               <div>
-                <p className="text-xs font-semibold text-primary">Using your uploaded report</p>
+                <p className="text-xs font-semibold text-primary">
+                  {docType === "patient_report" && "Using your patient report"}
+                  {docType === "research_paper" && "Using your uploaded research paper"}
+                  {docType === "general_medical" && "Using your uploaded medical document"}
+                  {(!docType || docType === "unknown") && "Using your uploaded document"}
+                </p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {answer.ragChunksFound
-                    ? `${answer.ragChunksFound} relevant excerpt${answer.ragChunksFound !== 1 ? "s" : ""} retrieved — personalised insights below reflect your document.`
-                    : "Relevant excerpts retrieved from your document and factored into the response."}
+                  {answer.isFallbackContext
+                    ? "No exact matches found — showing broad document overview as context."
+                    : answer.ragChunksFound
+                      ? `${answer.ragChunksFound} relevant excerpt${answer.ragChunksFound !== 1 ? "s" : ""} retrieved and factored into the response.`
+                      : "Relevant excerpts retrieved from your document."}
                 </p>
               </div>
             </div>
           )}
 
-          <Section
-            icon={Stethoscope}
-            label="Condition overview"
-            body={answer.conditionOverview}
-          />
-          {personalizedInsights && (
+          {/* Non-medical guardrail banner */}
+          {docType === "non_medical" && (
+            <div className="flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/8 px-4 py-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div>
+                <p className="text-xs font-semibold text-destructive">Non-medical document</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  This application only supports medical or healthcare-related documents.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Primary unified answer */}
+          {primaryAnswer && (
             <Section
-              icon={User}
-              label="Personalized insights"
-              accent
-              body={personalizedInsights}
+              icon={docType === "research_paper" ? FileText : Stethoscope}
+              label={
+                docType === "research_paper"
+                  ? "Research synthesis"
+                  : docType === "patient_report"
+                    ? "Clinical overview"
+                    : "Overview"
+              }
+              body={primaryAnswer}
             />
           )}
-          <Section
-            icon={Sparkles}
-            label="Research insights"
-            body={answer.researchInsights}
-          />
+
+          {/* Document-specific insights */}
+          {documentInsights && (
+            <Section
+              icon={docType === "research_paper" ? FileText : User}
+              label={
+                docType === "patient_report"
+                  ? "Personalized insights"
+                  : docType === "research_paper"
+                    ? "Paper insights"
+                    : "Document insights"
+              }
+              accent
+              body={documentInsights}
+            />
+          )}
+
+          {/* Legacy researchInsights (old conversations only) */}
+          {!primaryAnswer && answer.researchInsights && (
+            <Section
+              icon={Sparkles}
+              label="Research insights"
+              body={answer.researchInsights}
+            />
+          )}
+
           {/* Top cards — only render if data exists */}
           {((answer.publications?.length ?? 0) > 0 ||
             (answer.trials?.length ?? 0) > 0) && (

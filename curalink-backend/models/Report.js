@@ -17,18 +17,24 @@ const reportSchema = new mongoose.Schema(
     name: { type: String, required: true },
     size: Number,
     mimeType: String,
-    filePath: String, // Relative path on disk
+    filePath: String,
     status: {
       type: String,
       enum: ["uploading", "processing", "ready", "error"],
       default: "uploading",
     },
     progress: { type: Number, default: 0 },
+    // Document classification result
+    docType: {
+      type: String,
+      enum: ["patient_report", "research_paper", "general_medical", "non_medical", "unknown"],
+      default: "unknown",
+    },
     // Extracted content
-    fullText: { type: String, select: false }, // large, only fetch when needed
+    fullText: { type: String, select: false },
     chunks: { type: [chunkSchema], select: false },
     summary: String,
-    insights: [String], // Extracted key medical signals e.g. "KRAS G12C mutation"
+    insights: [String],
     errorMessage: String,
   },
   { timestamps: true }

@@ -1,18 +1,15 @@
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
 import multer from "multer";
 import Report from "../models/Report.js";
 import Conversation from "../models/Conversation.js";
 import {
   extractTextFromPDF,
   chunkText,
+  classifyDocument,
   extractMedicalInsights,
+  extractDocumentKeywords,
   generateQuickSummary,
 } from "../services/ragService.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 // ── Multer config ─────────────────────────────────────────────────────────────
 
 const storage = multer.memoryStorage();
@@ -45,21 +42,21 @@ export async function uploadReport(req, res) {
       name:     req.file.originalname,
       size:     req.file.size,
       mimeType: req.file.mimetype,
-      filePath: "", // Deprecated due to memory storage transition
+      filePath: "",
       status:   "processing",
       progress: 10,
+      docType:  "unknown",
     });
 
-    // Return immediately — processing is async
     res.status(202).json({
       id:       report._id,
       name:     report.name,
       size:     report.size,
       status:   "processing",
       progress: 10,
+      docType:  "unknown",
     });
 
-    // Kick off async pipeline
     processReport(report, req.file.buffer, conversationId).catch((err) => {
       console.error("[processReport unhandled]", err);
     });
@@ -85,33 +82,66 @@ async function processReport(report, fileBuffer, conversationId) {
       fullText = "[Image file — OCR not enabled. Please upload a text-based PDF.]";
     }
 
-    // Step 2 — Chunk text (50%)
-    await setProgress(50);
+    // Step 2 — Classify document type (35%)
+    await setProgress(35);
+    const docType = classifyDocument(fullText);
+    console.log(`[processReport] 📄 ${report.name} classified as: ${docType}`);
+
+    // Step 3 — Guardrail: reject non-medical documents
+    if (docType === "non_medical") {
+      await Report.findByIdAndUpdate(report._id, {
+        docType,
+        fullText,
+        chunks: [],
+        insights: [],
+        summary: "This application only supports medical or healthcare-related documents.",
+        status: "ready",
+        progress: 100,
+      });
+      console.log(`[processReport] ⛔ ${report.name} — non-medical, stored with warning`);
+      return;
+    }
+
+    // Step 4 — Chunk text (55%)
+    await setProgress(55);
     const chunks = chunkText(fullText);
 
-    // Step 3 — Extract medical signals (75%)
+    // Step 5 — Extract signals depending on doc type (75%)
     await setProgress(75);
-    const insights = extractMedicalInsights(fullText);
-    const summary  = generateQuickSummary(fullText);
+    let insights = [];
+    let summary = "";
 
-    // Step 4 — Save all results (100%)
+    if (docType === "patient_report") {
+      insights = extractMedicalInsights(fullText);
+      summary = generateQuickSummary(fullText);
+    } else if (docType === "research_paper") {
+      // For research papers, extract key topics as insights
+      const keywords = extractDocumentKeywords(fullText, 8);
+      insights = keywords;
+      summary = generateQuickSummary(fullText);
+    } else {
+      // general_medical
+      summary = generateQuickSummary(fullText);
+    }
+
+    // Step 6 — Save (100%)
     await Report.findByIdAndUpdate(report._id, {
       fullText,
       chunks,
+      docType,
       insights,
       summary,
       status:   "ready",
       progress: 100,
     });
 
-    // Link to conversation if provided
     if (conversationId) {
       await Conversation.findByIdAndUpdate(conversationId, {
         $addToSet: { reportIds: report._id },
       });
     }
 
-    console.log(`[processReport] ✅ ${report.name} — ${chunks.length} chunks`);
+    console.log(`[processReport] ✅ ${report.name} — ${chunks.length} chunks, type: ${docType}`);
   } catch (err) {
     console.error("[processReport] ❌", err.message);
     await Report.findByIdAndUpdate(report._id, {
@@ -134,6 +164,7 @@ export async function getReportStatus(req, res) {
       size:         report.size,
       status:       report.status,
       progress:     report.progress,
+      docType:      report.docType,
       summary:      report.summary,
       insights:     report.insights,
       errorMessage: report.errorMessage,
@@ -158,6 +189,7 @@ export async function listReports(req, res) {
         type:     r.mimeType,
         status:   r.status,
         progress: r.progress,
+        docType:  r.docType,
         summary:  r.summary,
         insights: r.insights,
       })),
@@ -173,7 +205,6 @@ export async function deleteReport(req, res) {
   try {
     const report = await Report.findOne({ _id: req.params.reportId, userId: req.user._id });
     if (!report) return res.status(404).json({ error: "Report not found" });
-
     await report.deleteOne();
     res.json({ success: true });
   } catch {

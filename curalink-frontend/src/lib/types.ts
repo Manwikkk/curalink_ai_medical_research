@@ -42,16 +42,33 @@ export interface Source {
   snippet: string;
 }
 
+export type DocType =
+  | "patient_report"
+  | "research_paper"
+  | "general_medical"
+  | "non_medical"
+  | "unknown"
+  | null;
+
 export interface AnswerSection {
-  conditionOverview: string;
+  /** Unified primary response — always populated */
+  answer: string;
+  /** Document-specific insights — null when no doc uploaded */
+  documentInsights?: string | null;
+  /** Type of uploaded document */
+  docType?: DocType;
+  /** Whether BM25 retrieval found relevant chunks */
+  ragUsed?: boolean;
+  ragChunksFound?: number;
+  /** True when BM25 scored 0 and first-N chunks used as fallback */
+  isFallbackContext?: boolean;
+  /** Legacy fields kept for UI backward-compat */
+  conditionOverview?: string;
   personalizedInsights?: string | null;
-  researchInsights: string;
+  researchInsights?: string;
   publications: Publication[];
   trials: ClinicalTrial[];
   sources: Source[];
-  /** Whether BM25 retrieval found relevant chunks from an uploaded document */
-  ragUsed?: boolean;
-  ragChunksFound?: number;
 }
 
 export interface ChatMessage {
@@ -94,6 +111,7 @@ export interface UploadedReport {
   type: string;
   status: "uploading" | "processing" | "ready" | "error";
   progress: number;
+  docType?: DocType;
   summary?: string;
   insights?: string[];
 }

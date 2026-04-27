@@ -7,7 +7,7 @@ import { searchOpenAlex } from "../services/openAlexService.js";
 import { searchClinicalTrials } from "../services/clinicalTrialsService.js";
 import { rankPublications, rankTrials, publicationsToSources } from "../services/rankingService.js";
 import { generateAnswer, generateTitle } from "../services/llmService.js";
-import { retrieveRelevantChunks } from "../services/ragService.js";
+import { retrieveRelevantChunks, extractDocumentKeywords } from "../services/ragService.js";
 
 /**
  * POST /api/chat
@@ -35,7 +35,6 @@ export async function sendMessage(req, res) {
         conversation = new Conversation({ userId, messages: [], title: "New research session" });
       }
 
-      // Merge newly uploaded reportIds into the conversation
       if (Array.isArray(reportIds) && reportIds.length > 0) {
         conversation.reportIds = [
           ...new Set([...(conversation.reportIds || []).map(String), ...reportIds.map(String)]),
@@ -53,14 +52,63 @@ export async function sendMessage(req, res) {
       condition || conversation?.condition || extractConditionFromHistory(priorMessages) || "";
     const effectiveLocation = location || req.user?.medicalProfile?.location || "";
 
-    // ── 3. Query expansion ─────────────────────────────────────────────────
+    // ── 3. RAG — load document and classify ──────────────────────────────
+    let reportContext    = null;
+    let ragUsed          = false;
+    let ragChunksFound   = 0;
+    let isFallbackContext = false;
+    let docType          = null;
+    let searchQuery      = query; // May be augmented for research papers
+
+    if (!isGuest && conversation?.reportIds?.length > 0) {
+      const report = await Report.findOne({
+        _id:    { $in: conversation.reportIds },
+        status: "ready",
+      })
+        .select("+chunks +fullText docType")
+        .sort({ createdAt: -1 });
+
+      if (report) {
+        docType = report.docType || "unknown";
+
+        // Non-medical doc: skip retrieval, let LLM return guardrail
+        if (docType === "non_medical") {
+          reportContext = "__non_medical__";
+        } else if (report.chunks?.length > 0) {
+          // For research papers, enrich search query with document keywords
+          if (docType === "research_paper" && report.fullText) {
+            const docKeywords = extractDocumentKeywords(report.fullText, 6);
+            if (docKeywords.length > 0) {
+              searchQuery = `${query} ${docKeywords.slice(0, 3).join(" ")}`;
+              console.log(`[RAG] 📚 Research paper — enriched search: "${searchQuery}"`);
+            }
+          }
+
+          const ragResult = retrieveRelevantChunks(report.chunks, query, 6);
+
+          if (ragResult.ragUsed && ragResult.context) {
+            reportContext     = ragResult.context;
+            ragUsed           = true;
+            isFallbackContext = ragResult.isFallback || false;
+            ragChunksFound    = ragResult.context.split("---").length;
+            console.log(
+              `[RAG] ✅ ${report.name} (${docType}) — topScore=${ragResult.topScore.toFixed(3)}, chunks=${ragChunksFound}, fallback=${isFallbackContext}`
+            );
+          } else {
+            console.log(`[RAG] ℹ️  ${report.name} — no chunks retrieved`);
+          }
+        }
+      }
+    }
+
+    // ── 4. Query expansion ─────────────────────────────────────────────────
     const { pubmedQuery, openAlexQuery, trialsCondition } = expandQuery(
-      query,
+      searchQuery,
       effectiveCondition,
       intent
     );
 
-    // ── 4. Parallel retrieval ──────────────────────────────────────────────
+    // ── 5. Parallel retrieval ──────────────────────────────────────────────
     const [rawPubMed, rawOpenAlex, rawTrials] = await Promise.allSettled([
       searchPubMed(pubmedQuery, 80),
       searchOpenAlex(openAlexQuery, 80),
@@ -71,65 +119,49 @@ export async function sendMessage(req, res) {
     const openAlexResults = rawOpenAlex.status === "fulfilled" ? rawOpenAlex.value : [];
     const trialsResults   = rawTrials.status   === "fulfilled" ? rawTrials.value   : [];
 
-    // ── 5. Rank & deduplicate ──────────────────────────────────────────────
+    // ── 6. Rank & deduplicate ──────────────────────────────────────────────
     const maxPubs   = req.user?.preferences?.maxPublications || 6;
     const maxTrials = req.user?.preferences?.maxTrials       || 4;
 
     const topPublications = rankPublications(
       [...pubMedResults, ...openAlexResults],
-      `${query} ${effectiveCondition}`,
+      `${searchQuery} ${effectiveCondition}`,
       maxPubs
     );
-    const topTrials = rankTrials(trialsResults, `${query} ${effectiveCondition}`, maxTrials);
-
-    // ── 6. RAG — BM25 retrieval from uploaded reports ─────────────────────
-    let reportContext   = null;
-    let ragUsed         = false;
-    let ragChunksFound  = 0;
-
-    if (!isGuest && conversation?.reportIds?.length > 0) {
-      // Find the most recently uploaded ready report
-      const report = await Report.findOne({
-        _id:    { $in: conversation.reportIds },
-        status: "ready",
-      })
-        .select("+chunks")
-        .sort({ createdAt: -1 });
-
-      if (report?.chunks?.length > 0) {
-        const ragResult = retrieveRelevantChunks(report.chunks, query, 5);
-        if (ragResult.ragUsed && ragResult.context) {
-          reportContext  = ragResult.context;
-          ragUsed        = true;
-          ragChunksFound = ragResult.context.split("---").length;
-          console.log(`[RAG] ✅ ${report.name} — BM25 topScore=${ragResult.topScore.toFixed(3)}, chunks=${ragChunksFound}`);
-        } else {
-          console.log(`[RAG] ℹ️  ${report.name} — no relevant chunks for this query`);
-        }
-      }
-    }
+    const topTrials = rankTrials(trialsResults, `${searchQuery} ${effectiveCondition}`, maxTrials);
 
     // ── 7. LLM synthesis ──────────────────────────────────────────────────
     const llmResult = await generateAnswer({
       query,
-      condition:           effectiveCondition,
-      publications:        topPublications,
-      trials:              topTrials,
+      condition:        effectiveCondition,
+      intent:           intent || "",
+      location:         effectiveLocation,
+      publications:     topPublications,
+      trials:           topTrials,
       conversationHistory,
-      reportContext,
-      userProfile:         req.user || {},
+      reportContext:    reportContext === "__non_medical__" ? null : reportContext,
+      docType,
+      isFallbackContext,
+      userProfile:      req.user || {},
     });
 
     // ── 8. Build answer section ────────────────────────────────────────────
     const answerSection = {
-      conditionOverview:    llmResult.conditionOverview    || "",
-      personalizedInsights: llmResult.personalizedInsights || null,
-      researchInsights:     llmResult.researchInsights     || "",
-      publications:         topPublications,
-      trials:               topTrials,
-      sources:              publicationsToSources(topPublications),
+      // New unified fields
+      answer:            llmResult.answer            || "",
+      documentInsights:  llmResult.documentInsights  || null,
+      docType:           llmResult.docType           || docType || null,
+      // Legacy fields kept for backward compat with existing UI sections
+      conditionOverview:    llmResult.answer         || "",
+      personalizedInsights: llmResult.documentInsights || null,
+      researchInsights:     llmResult.answer         || "",
+      // Data
+      publications:  topPublications,
+      trials:        topTrials,
+      sources:       publicationsToSources(topPublications),
       ragUsed,
       ragChunksFound,
+      isFallbackContext,
     };
 
     // ── 9. Persist (authenticated only) ───────────────────────────────────
@@ -151,7 +183,7 @@ export async function sendMessage(req, res) {
         {
           id:        uuidv4(),
           role:      "assistant",
-          content:   llmResult.researchInsights?.slice(0, 200) || "Research synthesis complete.",
+          content:   llmResult.answer?.slice(0, 200) || "Research synthesis complete.",
           timestamp: Date.now(),
           answer:    answerSection,
         }
@@ -175,12 +207,13 @@ export async function sendMessage(req, res) {
       message: {
         id:        uuidv4(),
         role:      "assistant",
-        content:   llmResult.researchInsights?.slice(0, 200) || "Research synthesis complete.",
+        content:   llmResult.answer?.slice(0, 200) || "Research synthesis complete.",
         timestamp: Date.now(),
         answer:    answerSection,
       },
       isGuest,
       ragUsed,
+      docType,
       stats: {
         pubmedFetched:      pubMedResults.length,
         openAlexFetched:    openAlexResults.length,

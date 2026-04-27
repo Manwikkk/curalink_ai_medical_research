@@ -5,9 +5,9 @@ const groqClient = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null;
 
-const GROQ_MODEL  = process.env.GROQ_MODEL    || "llama-3.3-70b-versatile";
-const OLLAMA_URL  = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL  || "llama3.2";
+const GROQ_MODEL   = process.env.GROQ_MODEL     || "llama-3.3-70b-versatile";
+const OLLAMA_URL   = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL    || "llama3.2";
 
 export async function chat(messages, maxTokens = 2048) {
   return groqClient ? chatGroq(messages, maxTokens) : chatOllama(messages, maxTokens);
@@ -44,40 +44,86 @@ async function chatOllama(messages, maxTokens) {
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 
-export function buildSystemPrompt(userProfile = {}, hasReportContext = false) {
+export function buildSystemPrompt(opts = {}) {
+  const {
+    userProfile = {},
+    docType = null,
+    hasDocContext = false,
+    structuredContext = {},
+  } = opts;
+
+  // ── Profile line ──────────────────────────────────────────────────────────
   const profileCtx = userProfile.medicalProfile?.condition
-    ? `\nUser's clinical profile: specialty="${userProfile.medicalProfile.specialty || "not set"}", condition of interest="${userProfile.medicalProfile.condition}", location="${userProfile.medicalProfile.location || "not set"}".`
+    ? `\nUser profile: specialty="${userProfile.medicalProfile.specialty || "not set"}", condition="${userProfile.medicalProfile.condition}", location="${userProfile.medicalProfile.location || "not set"}".`
     : "";
 
-  const reportRule = hasReportContext
-    ? `\nA patient report has been uploaded. You MUST begin the personalizedInsights field with "Based on your uploaded report, " and then connect the document findings directly to the query. This is mandatory when report context is provided.`
-    : "";
+  // ── Structured query context ──────────────────────────────────────────────
+  let contextRules = "";
+  if (structuredContext.condition || structuredContext.intent || structuredContext.location) {
+    contextRules = "\n\nSTRUCTURED CONTEXT FROM USER:";
+    if (structuredContext.condition) contextRules += `\n- Condition: "${structuredContext.condition}"`;
+    if (structuredContext.intent)    contextRules += `\n- Research intent: "${structuredContext.intent}"`;
+    if (structuredContext.location)  contextRules += `\n- Geographic focus: "${structuredContext.location}"`;
+    contextRules += "\n\nYou MUST address all of the above in your response.";
+    if (structuredContext.intent)   contextRules += ` Focus your answer on the "${structuredContext.intent}" aspect.`;
+    if (structuredContext.location) contextRules += ` Highlight clinical trials near "${structuredContext.location}" and state if none are available there.`;
+  }
 
-  return `You are Curalink, an AI medical research assistant for clinicians and scientists.${profileCtx}${reportRule}
+  // ── Doc-type-specific instructions ───────────────────────────────────────
+  let docInstructions = "";
+  if (hasDocContext && docType) {
+    switch (docType) {
+      case "patient_report":
+        docInstructions = `\n\nDOCUMENT TYPE: Clinical Patient Report
+You have been provided excerpts from the patient's clinical report.
+- Connect findings from the report (biomarkers, diagnoses, stage, medications) directly to the user's question.
+- In documentInsights, start with "Based on your uploaded report, " and give specific, personalized insights.
+- Recommend relevant treatment options and related research grounded in both the document and retrieved publications.`;
+        break;
 
-Your job is to synthesise peer-reviewed publications, clinical trial data, and — when provided — an uploaded patient report into a structured, evidence-based JSON response.
+      case "research_paper":
+        docInstructions = `\n\nDOCUMENT TYPE: Medical Research Paper
+You have been provided excerpts from an uploaded research paper.
+- In documentInsights, start with "Based on the uploaded paper, " and summarize: key findings, methodology (if relevant), and clinical implications.
+- Answer any question the user has specifically about this paper using the excerpts.
+- Connect the paper's findings to the retrieved external publications for broader context.`;
+        break;
 
+      case "general_medical":
+        docInstructions = `\n\nDOCUMENT TYPE: General Medical Document
+You have been provided excerpts from a general medical document.
+- In documentInsights, start with "Based on the uploaded document, " and explain what the document contains and how it relates to the question.
+- Answer the user's question using both the document content and the retrieved literature.`;
+        break;
+
+      default:
+        docInstructions = `\n\nA document has been uploaded. Use the provided excerpts to answer the question. Start documentInsights with "Based on the uploaded document, ".`;
+    }
+  }
+
+  // ── Core rules ────────────────────────────────────────────────────────────
+  const coreRules = `
 CRITICAL RULES:
-1. You do NOT hallucinate. You do NOT invent studies, statistics, drug names, or trial results not present in the provided context.
-2. You reason ONLY from the context provided in this message.
-3. If fewer than 3 publications are found, acknowledge limited evidence explicitly.
+1. NEVER hallucinate — only reference studies, statistics, or findings present in the provided context.
+2. NEVER return "no relevant information", "undefined", or empty fields.
+3. If the retrieved publications are insufficient, acknowledge this but still provide a general evidence-based explanation.
+4. If no document context is provided, set documentInsights to JSON null.
+5. Keep answer concise but complete: 4-6 sentences for each field.
 
-STRICT OUTPUT FORMAT — return ONLY this raw JSON object (no markdown, no text outside the braces):
+STRICT OUTPUT FORMAT — return ONLY this raw JSON object, no markdown, no text outside braces:
 {
-  "conditionOverview": "2-4 sentences: factual, evidence-based overview of the condition or treatment queried.",
-  "personalizedInsights": null,
-  "researchInsights": "3-5 sentences synthesising the key findings from the retrieved publications."
+  "answer": "Your primary response to the user's question — synthesises publications, trials, document context, and structured query context into one unified intelligent response.",
+  "documentInsights": null,
+  "docType": null
 }
 
-RULES FOR personalizedInsights:
-- MUST be JSON null (not the string "null") when no patient report is provided.
-- When a report IS provided: MUST start with "Based on your uploaded report, " and connect document findings to the query in 2-4 sentences.
-- NEVER write the word null as a string. Use actual JSON null.
+RULES:
+- answer: ALWAYS populated. Integrate all available evidence. Never leave empty.
+- documentInsights: null when no document uploaded. When document present: MUST start with the exact prefix shown in document instructions above. 2-4 sentences max.
+- docType: Set to the document type string if a document was provided, else null.`;
 
-RULES FOR researchInsights:
-- Ground every claim in the provided publications.
-- Use precise medical terminology.
-- Be concise: 3-5 sentences maximum.`;
+  return `You are Curalink, an expert AI medical research assistant for clinicians and scientists.${profileCtx}${contextRules}${docInstructions}
+${coreRules}`;
 }
 
 // ── Answer Generator ──────────────────────────────────────────────────────────
@@ -85,37 +131,74 @@ RULES FOR researchInsights:
 export async function generateAnswer({
   query,
   condition,
+  intent,
+  location,
   publications,
   trials,
   conversationHistory,
   reportContext,
+  docType,
+  isFallbackContext,
   userProfile,
 }) {
-  const hasReportContext = !!reportContext && reportContext.length > 20;
-  const systemPrompt = buildSystemPrompt(userProfile, hasReportContext);
+  const hasDocContext = !!reportContext && reportContext.length > 20;
 
+  // Guardrail — non-medical documents get a canned response, no LLM call
+  if (docType === "non_medical") {
+    return {
+      answer: "This application only supports medical or healthcare-related documents. The uploaded file does not appear to contain medical content. Please upload a clinical report, research paper, or other healthcare-related document.",
+      documentInsights: null,
+      docType: "non_medical",
+    };
+  }
+
+  const systemPrompt = buildSystemPrompt({
+    userProfile,
+    docType: hasDocContext ? docType : null,
+    hasDocContext,
+    structuredContext: { condition, intent, location },
+  });
+
+  // ── Build publication context ──────────────────────────────────────────────
   const pubsBrief = publications.slice(0, 8).map((p, i) =>
-    `[${i + 1}] "${p.title}" — Source: ${p.source || p.platform}, Year: ${p.year || "unknown"}, Citations: ${p.citations ?? "N/A"}\n     Abstract: ${(p.abstract || p.snippet || "No abstract available.").slice(0, 280)}`
+    `[${i + 1}] "${p.title}" — Source: ${p.source || p.platform}, Year: ${p.year || "unknown"}, Citations: ${p.citations ?? "N/A"}\n     Abstract: ${(p.abstract || p.snippet || "No abstract available.").slice(0, 300)}`
   ).join("\n\n");
 
+  // ── Build trials context ──────────────────────────────────────────────────
   const trialsBrief = trials.slice(0, 6).map((t, i) =>
-    `[T${i + 1}] "${t.title}" — Status: ${t.status || "unknown"}, Phase: ${t.phase || "N/A"}, Sponsor: ${t.sponsor || "N/A"}`
-  ).join("\n");
+    `[T${i + 1}] "${t.title}" — Status: ${t.status || "unknown"}, Phase: ${t.phase || "N/A"}, Sponsor: ${t.sponsor || "N/A"}, Location: ${t.location || "not specified"}${t.eligibility ? `\n     Eligibility: ${t.eligibility.slice(0, 200)}` : ""}`
+  ).join("\n\n");
 
-  const reportBlock = hasReportContext
-    ? `\n\n════════════════════════════════\nUPLOADED PATIENT REPORT CONTEXT\n════════════════════════════════\n${reportContext}\n(End of report — use this for personalizedInsights)\n`
+  // ── Document context block ────────────────────────────────────────────────
+  let documentBlock = "";
+  if (hasDocContext) {
+    const contextLabel = isFallbackContext
+      ? "UPLOADED DOCUMENT — BROAD CONTEXT (query didn't match specific sections, showing document overview)"
+      : "UPLOADED DOCUMENT — RELEVANT EXCERPTS";
+    documentBlock = `\n\n${"═".repeat(40)}\n${contextLabel}\n${"═".repeat(40)}\n${reportContext}\n(End of document excerpts)\n`;
+  }
+
+  // ── Structured context summary line ──────────────────────────────────────
+  const contextParts = [];
+  if (condition) contextParts.push(`Condition: ${condition}`);
+  if (intent)    contextParts.push(`Intent: ${intent}`);
+  if (location)  contextParts.push(`Location: ${location}`);
+  const structuredLine = contextParts.length > 0
+    ? `STRUCTURED CONTEXT: ${contextParts.join(" | ")}\n`
     : "";
 
   const userMessage = `RESEARCH QUERY: "${query}"
-CLINICAL CONDITION: ${condition || "General / inferred from query"}
-${reportBlock}
-RETRIEVED PUBLICATIONS (${publications.length} results, ranked by relevance):
+${structuredLine}CLINICAL CONDITION: ${condition || "General / inferred from query"}
+RESEARCH INTENT: ${intent || "General research"}
+GEOGRAPHIC FOCUS: ${location || "Global / not specified"}
+${documentBlock}
+RETRIEVED PUBLICATIONS (${publications.length} ranked results):
 ${pubsBrief || "No publications retrieved."}
 
 RETRIEVED CLINICAL TRIALS (${trials.length} results):
 ${trialsBrief || "No clinical trials retrieved."}
 
-Generate the JSON response now. ${hasReportContext ? "personalizedInsights MUST begin with 'Based on your uploaded report, '" : "personalizedInsights MUST be JSON null."}`;
+Generate the JSON response now.${hasDocContext ? ` documentInsights MUST start with the appropriate prefix for a ${docType || "document"}.` : " documentInsights MUST be JSON null."}`;
 
   const messages = [
     { role: "system", content: systemPrompt },
@@ -123,7 +206,7 @@ Generate the JSON response now. ${hasReportContext ? "personalizedInsights MUST 
     { role: "user", content: userMessage },
   ];
 
-  const rawResponse = await chat(messages, 2000);
+  const rawResponse = await chat(messages, 2200);
 
   try {
     const cleaned = rawResponse
@@ -140,21 +223,30 @@ Generate the JSON response now. ${hasReportContext ? "personalizedInsights MUST 
 
     // Sanitise null strings
     if (
-      parsed.personalizedInsights === "null" ||
-      parsed.personalizedInsights === "" ||
-      parsed.personalizedInsights === "N/A"
+      !parsed.documentInsights ||
+      parsed.documentInsights === "null" ||
+      parsed.documentInsights === "" ||
+      parsed.documentInsights === "N/A"
     ) {
-      parsed.personalizedInsights = null;
+      parsed.documentInsights = null;
     }
-    if (!hasReportContext) parsed.personalizedInsights = null;
+
+    // If no doc uploaded, force null regardless of what LLM returned
+    if (!hasDocContext) parsed.documentInsights = null;
+
+    // Ensure answer is never empty
+    if (!parsed.answer || parsed.answer.trim().length < 10) {
+      parsed.answer = rawResponse.slice(0, 600).trim();
+    }
 
     return parsed;
   } catch (err) {
     console.warn("[LLM] JSON parse failed:", err.message, "| Raw:", rawResponse.slice(0, 200));
+    // Return best-effort extraction rather than empty
     return {
-      conditionOverview:    extractSection(rawResponse, "condition") || rawResponse.slice(0, 400),
-      personalizedInsights: null,
-      researchInsights:     extractSection(rawResponse, "insight")   || rawResponse.slice(0, 600),
+      answer: rawResponse.slice(0, 800).trim() || "Research synthesis complete. Please refer to the retrieved publications and trials for evidence.",
+      documentInsights: null,
+      docType: docType || null,
     };
   }
 }
@@ -175,11 +267,4 @@ export async function generateTitle(query, condition) {
   } catch {
     return query.slice(0, 60);
   }
-}
-
-function extractSection(text, keyword) {
-  const lower = text.toLowerCase();
-  const idx = lower.indexOf(keyword);
-  if (idx === -1) return null;
-  return text.slice(idx, idx + 500).trim();
 }
