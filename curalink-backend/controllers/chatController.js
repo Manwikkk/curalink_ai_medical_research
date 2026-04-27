@@ -207,9 +207,9 @@ export async function sendMessage(req, res) {
           content:   query,
           timestamp: Date.now(),
           context: {
-            condition: effectiveCondition || undefined,
-            intent:    intent            || undefined,
-            location:  effectiveLocation || undefined,
+            condition: currentCondition || undefined,
+            intent:    currentIntent    || undefined,
+            location:  currentLocation  || undefined,
           },
         },
         {
@@ -227,7 +227,7 @@ export async function sendMessage(req, res) {
       }
 
       if (conversation.messages.length <= 2) {
-        conversation.title = await generateTitle(query, effectiveCondition);
+        conversation.title = await generateTitle(query, metaCondition);
       }
 
       await conversation.save();
