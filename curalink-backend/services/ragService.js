@@ -138,7 +138,11 @@ export function retrieveRelevantChunks(chunks, query, topK = 6) {
   const idf = {};
   for (const term of queryTerms) {
     const df = chunks.filter((c) => {
-      return (c.termFreq && c.termFreq[term]) || (c.keywords && c.keywords.includes(term));
+      // Handle both Mongoose Map and plain object
+      const hasTerm = c.termFreq instanceof Map
+        ? c.termFreq.has(term)
+        : (c.termFreq && c.termFreq[term]);
+      return hasTerm || (c.keywords && c.keywords.includes(term));
     }).length;
     idf[term] = Math.log((N - df + 0.5) / (df + 0.5) + 1);
   }
@@ -146,18 +150,23 @@ export function retrieveRelevantChunks(chunks, query, topK = 6) {
   const avgLen = chunks.reduce((s, c) => s + c.text.length, 0) / N;
 
   const scored = chunks.map((chunk) => {
-    const tf = chunk.termFreq || {};
+    // Handle both Mongoose Map and plain object for termFreq
+    const tfMap = chunk.termFreq;
+    const getFreq = (term) => {
+      if (tfMap instanceof Map) return tfMap.get(term) || 0;
+      return (tfMap && tfMap[term]) || 0;
+    };
     const docLen = chunk.text.length;
     let score = 0;
 
     for (const term of queryTerms) {
-      const freq = tf[term] || (chunk.text.toLowerCase().includes(term) ? 1 : 0);
+      const freq = getFreq(term) || (chunk.text.toLowerCase().includes(term) ? 1 : 0);
       const numerator   = freq * (BM25_K1 + 1);
       const denominator = freq + BM25_K1 * (1 - BM25_B + BM25_B * (docLen / avgLen));
       score += (idf[term] || 0) * (numerator / denominator);
     }
 
-    return { ...chunk, _score: score };
+    return { ...chunk.toObject?.() ?? chunk, _score: score };
   });
 
   const sorted = scored.sort((a, b) => b._score - a._score);

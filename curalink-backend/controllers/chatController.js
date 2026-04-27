@@ -92,7 +92,7 @@ export async function sendMessage(req, res) {
         _id:    { $in: conversation.reportIds },
         status: "ready",
       })
-        .select("+chunks +fullText docType")
+        .select("+chunks +fullText")  // docType included automatically (not select:false)
         .sort({ createdAt: -1 });
 
       if (report) {

@@ -48,6 +48,14 @@ const sourceSchema = new mongoose.Schema(
 
 const answerSectionSchema = new mongoose.Schema(
   {
+    // New unified fields
+    answer: String,
+    documentInsights: String,
+    docType: String,
+    ragUsed: Boolean,
+    ragChunksFound: Number,
+    isFallbackContext: Boolean,
+    // Legacy fields
     conditionOverview: String,
     personalizedInsights: String,
     researchInsights: String,
