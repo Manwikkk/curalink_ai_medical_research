@@ -28,13 +28,14 @@ export function ChatWindow({
   onConversationCreated,
   isGuest = false,
 }: ChatWindowProps) {
-  const [messages, setMessages]                     = useState<ChatMessage[]>([]);
-  const [loading, setLoading]                       = useState(false);
-  const [error, setError]                           = useState<string | null>(null);
+  const [messages, setMessages]                       = useState<ChatMessage[]>([]);
+  const [loading, setLoading]                         = useState(false);
+  const [error, setError]                             = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | undefined>(conversationId);
-  const [sessionTitle, setSessionTitle]             = useState<string>("");
-  const [sessionCondition, setSessionCondition]     = useState<string>("");
-  const [pendingUploads, setPendingUploads]         = useState<FileAttachment[]>([]);
+  const [sessionTitle, setSessionTitle]               = useState<string>("");
+  const [sessionCondition, setSessionCondition]       = useState<string>("");
+  const [pendingUploads, setPendingUploads]           = useState<FileAttachment[]>([]);
+  const [activeDocName, setActiveDocName]             = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // ── Load conversation when switching sessions ──────────────────────────────
@@ -48,6 +49,7 @@ export function ChatWindow({
       setSessionTitle("");
       setSessionCondition("");
       setPendingUploads([]);
+      setActiveDocName(null);
     }
   }, [conversationId, isGuest]);
 
@@ -62,6 +64,16 @@ export function ChatWindow({
       setMessages(conv.messages || []);
       setSessionTitle(conv.title || "");
       setSessionCondition(conv.condition || "");
+      // Detect if conversation has a linked document — show indicator
+      if (conv.reportIds?.length > 0) {
+        // Find the last user message with an attachment to get the filename
+        const msgWithDoc = [...(conv.messages || [])].reverse().find(
+          (m: any) => m.role === "user" && m.attachments?.length > 0
+        );
+        setActiveDocName(msgWithDoc?.attachments?.[0]?.name || "Uploaded document");
+      } else {
+        setActiveDocName(null);
+      }
     } catch {
       setError("Failed to load conversation.");
     }
@@ -82,21 +94,20 @@ export function ChatWindow({
     convId?: string
   ): Promise<string | null> {
     try {
-      // Step 1: upload
       updateAttachment(attachId, { status: "upload" });
       const uploadRes = await reportApi.upload(file, convId);
 
-      // Step 2: extracting text (poll for 20% → 50%)
       updateAttachment(attachId, { status: "extracting", reportId: uploadRes.id });
 
-      // Step 3: indexing (poll until ready)
       await reportApi.pollUntilReady(uploadRes.id, (r) => {
         if (r.progress >= 75) {
           updateAttachment(attachId, { status: "indexing" });
         }
       });
 
+      // Mark ready and record the doc name for the active-doc indicator
       updateAttachment(attachId, { status: "ready", reportId: uploadRes.id });
+      setActiveDocName(file.name);
       return uploadRes.id;
     } catch (err: any) {
       updateAttachment(attachId, { status: "error", errorMessage: err.message || "Processing failed" });
@@ -247,7 +258,29 @@ export function ChatWindow({
 
       {/* ── Composer ──────────────────────────────────────────────────────── */}
       <div className="border-t border-border/40 bg-background/60 px-4 py-4 backdrop-blur-xl sm:px-8">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-4xl space-y-2">
+          {/* Document-context-active indicator */}
+          {activeDocName && (
+            <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/6 px-3 py-1.5">
+              <div className="flex items-center gap-2">
+                <BookOpenCheck className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="text-[11px] font-medium text-primary">
+                  Document context active
+                </span>
+                <span className="max-w-[200px] truncate text-[11px] text-muted-foreground">
+                  {activeDocName}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveDocName(null)}
+                className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                title="Dismiss indicator"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           <QueryComposer onSubmit={handleSubmit} disabled={loading || hasActiveUploads} />
         </div>
       </div>

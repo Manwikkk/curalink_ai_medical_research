@@ -204,19 +204,27 @@ export async function generateAnswer({
   const intentLine    = intent    ? `RESEARCH INTENT: ${intent}\n`       : "";
   const locationLine  = location  ? `GEOGRAPHIC FOCUS: ${location}\n`    : "";
 
+  const isFollowUp = conversationHistory.length > 0;
+
+  // When this is a follow-up AND a document is attached, strongly cue the LLM
+  // to answer the NEW question rather than re-summarize the document.
+  const followUpDocNote = isFollowUp && hasDocContext
+    ? `\nIMPORTANT: This is a FOLLOW-UP question in an ongoing conversation. You have already responded to the previous question. Now answer THIS NEW SPECIFIC question: "${query}". Do NOT repeat or re-summarize your previous answer. Use the document excerpts as background context only — they are provided so you can reference relevant sections if needed for THIS question.\n`
+    : "";
+
   const userMessage = `RESEARCH QUERY: "${query}"
-${structuredLine}${conditionLine}${intentLine}${locationLine}${documentBlock}
+${followUpDocNote}${structuredLine}${conditionLine}${intentLine}${locationLine}${documentBlock}
 RETRIEVED PUBLICATIONS (${publications.length} ranked results):
 ${pubsBrief || "No publications retrieved."}
 
 RETRIEVED CLINICAL TRIALS (${trials.length} results):
 ${trialsBrief || "No clinical trials retrieved."}
 
-Generate the JSON response now.${hasDocContext ? ` documentInsights MUST start with the appropriate prefix for a ${docType || "document"}.` : " documentInsights MUST be JSON null."}`;
+Generate the JSON response now.${hasDocContext ? ` documentInsights MUST start with the appropriate prefix for a ${docType || "document"} and relate to the current question.` : " documentInsights MUST be JSON null."}${isFollowUp ? " answer field MUST address the current follow-up question specifically." : ""}`;
 
   const messages = [
     { role: "system", content: systemPrompt },
-    ...conversationHistory.slice(-6),
+    ...conversationHistory.slice(-8),
     { role: "user", content: userMessage },
   ];
 
