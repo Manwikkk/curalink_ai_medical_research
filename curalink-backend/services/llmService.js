@@ -102,6 +102,17 @@ You have been provided excerpts from a general medical document.
   }
 
   // ── Core rules ────────────────────────────────────────────────────────────
+  const hasStructuredContext = !!(structuredContext.condition || structuredContext.intent || structuredContext.location);
+  const followUpRule = !hasStructuredContext
+    ? `\n\nFOLLOW-UP QUESTION HANDLING:
+The user did NOT provide any structured context (condition/intent/location) for this query.
+This may be a follow-up to a previous conversation turn.
+- Use the conversation history provided to understand prior context.
+- Answer the CURRENT question directly — do NOT assume the previous turn's condition, intent, or location still apply unless the question makes that clear.
+- If the question is clearly a follow-up (e.g. "what about X?", "tell me more", "what are the side effects?"), use the prior conversation to provide continuity.
+- Do NOT mention or reference geographic restrictions, specific conditions, or intents from previous turns unless the user explicitly asks about them again.`
+    : "";
+
   const coreRules = `
 CRITICAL RULES:
 1. NEVER hallucinate — only reference studies, statistics, or findings present in the provided context.
@@ -109,6 +120,7 @@ CRITICAL RULES:
 3. If the retrieved publications are insufficient, acknowledge this but still provide a general evidence-based explanation.
 4. If no document context is provided, set documentInsights to JSON null.
 5. Keep answer concise but complete: 4-6 sentences for each field.
+6. NEVER re-apply a previous turn's structured context (condition/intent/location) to the current question unless the user restates it.${followUpRule}
 
 STRICT OUTPUT FORMAT — return ONLY this raw JSON object, no markdown, no text outside braces:
 {
@@ -178,20 +190,22 @@ export async function generateAnswer({
     documentBlock = `\n\n${"═".repeat(40)}\n${contextLabel}\n${"═".repeat(40)}\n${reportContext}\n(End of document excerpts)\n`;
   }
 
-  // ── Structured context summary line ──────────────────────────────────────
+  // ── Structured context summary line (only when provided in THIS request) ─
   const contextParts = [];
   if (condition) contextParts.push(`Condition: ${condition}`);
   if (intent)    contextParts.push(`Intent: ${intent}`);
   if (location)  contextParts.push(`Location: ${location}`);
   const structuredLine = contextParts.length > 0
-    ? `STRUCTURED CONTEXT: ${contextParts.join(" | ")}\n`
-    : "";
+    ? `STRUCTURED CONTEXT (this query): ${contextParts.join(" | ")}\n`
+    : "NOTE: No structured context provided for this query — this may be a follow-up question. Use conversation history for continuity.\n";
+
+  // Only include explicit context lines when they were actually provided
+  const conditionLine = condition ? `CLINICAL CONDITION: ${condition}\n` : "";
+  const intentLine    = intent    ? `RESEARCH INTENT: ${intent}\n`       : "";
+  const locationLine  = location  ? `GEOGRAPHIC FOCUS: ${location}\n`    : "";
 
   const userMessage = `RESEARCH QUERY: "${query}"
-${structuredLine}CLINICAL CONDITION: ${condition || "General / inferred from query"}
-RESEARCH INTENT: ${intent || "General research"}
-GEOGRAPHIC FOCUS: ${location || "Global / not specified"}
-${documentBlock}
+${structuredLine}${conditionLine}${intentLine}${locationLine}${documentBlock}
 RETRIEVED PUBLICATIONS (${publications.length} ranked results):
 ${pubsBrief || "No publications retrieved."}
 

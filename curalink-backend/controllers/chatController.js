@@ -43,14 +43,41 @@ export async function sendMessage(req, res) {
     }
 
     // ── 2. Build context ───────────────────────────────────────────────────
-    const conversationHistory = priorMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
 
-    const effectiveCondition =
-      condition || conversation?.condition || extractConditionFromHistory(priorMessages) || "";
-    const effectiveLocation = location || req.user?.medicalProfile?.location || "";
+    // Build rich conversation history for LLM memory.
+    // Include user questions with their structured context labels so the LLM
+    // understands what each prior turn was about.
+    const conversationHistory = priorMessages.map((m) => {
+      if (m.role === "user") {
+        // Reconstruct user turn with context so LLM knows prior intent
+        const parts = [m.content];
+        if (m.context?.condition) parts.push(`[Condition: ${m.context.condition}]`);
+        if (m.context?.intent)    parts.push(`[Intent: ${m.context.intent}]`);
+        if (m.context?.location)  parts.push(`[Location: ${m.context.location}]`);
+        return { role: "user", content: parts.join(" ") };
+      }
+      // Assistant: use the full answer text where available, fallback to content
+      const answerText = m.answer?.answer || m.answer?.conditionOverview || m.content || "";
+      return { role: "assistant", content: answerText.slice(0, 600) };
+    });
+
+    // ── STRUCTURED CONTEXT — current request only ──────────────────────────
+    // IMPORTANT: These are ONLY what the user explicitly provided in THIS request.
+    // They are NEVER carried over from previous turns — that would cause the LLM
+    // to re-apply old structured context to unrelated follow-up questions.
+    const currentCondition = condition?.trim() || "";
+    const currentIntent    = intent?.trim()    || "";
+    const currentLocation  = location?.trim()  || "";
+
+    // ── META CONDITION — for search expansion and conversation metadata only ─
+    // Carries forward the conversation topic for better API queries,
+    // but is NOT injected as a hard constraint into the LLM prompt.
+    const metaCondition =
+      condition?.trim() ||
+      conversation?.condition ||
+      extractConditionFromHistory(priorMessages) ||
+      "";
+    const metaLocation = location?.trim() || req.user?.medicalProfile?.location || "";
 
     // ── 3. RAG — load document and classify ──────────────────────────────
     let reportContext    = null;
@@ -102,17 +129,19 @@ export async function sendMessage(req, res) {
     }
 
     // ── 4. Query expansion ─────────────────────────────────────────────────
+    // Use metaCondition (conversation topic) for better API search queries,
+    // but NOT to constrain the LLM answer.
     const { pubmedQuery, openAlexQuery, trialsCondition } = expandQuery(
       searchQuery,
-      effectiveCondition,
-      intent
+      metaCondition,
+      currentIntent
     );
 
     // ── 5. Parallel retrieval ──────────────────────────────────────────────
     const [rawPubMed, rawOpenAlex, rawTrials] = await Promise.allSettled([
       searchPubMed(pubmedQuery, 80),
       searchOpenAlex(openAlexQuery, 80),
-      searchClinicalTrials(trialsCondition, effectiveLocation, 60),
+      searchClinicalTrials(trialsCondition, metaLocation, 60),
     ]);
 
     const pubMedResults   = rawPubMed.status   === "fulfilled" ? rawPubMed.value   : [];
@@ -125,17 +154,20 @@ export async function sendMessage(req, res) {
 
     const topPublications = rankPublications(
       [...pubMedResults, ...openAlexResults],
-      `${searchQuery} ${effectiveCondition}`,
+      `${searchQuery} ${metaCondition}`,
       maxPubs
     );
-    const topTrials = rankTrials(trialsResults, `${searchQuery} ${effectiveCondition}`, maxTrials);
+    const topTrials = rankTrials(trialsResults, `${searchQuery} ${metaCondition}`, maxTrials);
 
     // ── 7. LLM synthesis ──────────────────────────────────────────────────
+    // Pass ONLY the current request's structured context to the LLM.
+    // The LLM gets conversation memory through conversationHistory.
+    // Do NOT pass metaCondition here — that would re-apply stale prior context.
     const llmResult = await generateAnswer({
       query,
-      condition:        effectiveCondition,
-      intent:           intent || "",
-      location:         effectiveLocation,
+      condition:        currentCondition,
+      intent:           currentIntent,
+      location:         currentLocation,
       publications:     topPublications,
       trials:           topTrials,
       conversationHistory,
@@ -189,8 +221,9 @@ export async function sendMessage(req, res) {
         }
       );
 
-      if (effectiveCondition && !conversation.condition) {
-        conversation.condition = effectiveCondition;
+      // Save metaCondition to conversation metadata — for UI display and session context
+      if (metaCondition && !conversation.condition) {
+        conversation.condition = metaCondition;
       }
 
       if (conversation.messages.length <= 2) {
